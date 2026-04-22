@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  isGuest   Boolean  @default(false)
+  role      String   @default("PLAYER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile       Profile?
+  rating        Rating?
+  matchesW      Match[]  @relation("WhitePlayer")
+  matchesB      Match[]  @relation("BlackPlayer")
+  rooms         RoomPlayer[]
+  moves         Move[]
+  messages      ChatMessage[]
+  subscription  DeveloperSubscription?
+  customGames   CustomGame[]
+  submissions   GameSubmission[]
+  reviews       ReviewLog[]
+  payments      Payment[]
+
+  @@map("users")
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  avatar    String?
+  bio       String?
+  gamesWon    Int      @default(0)
+  gamesLost   Int      @default(0)
+  gamesDraw   Int      @default(0)
+  isDeveloper Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Rating {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  elo       Int      @default(1200)
+  gameType  String   @default("chess")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ratings")
+}
+
+model Room {
+  id        String     @id @default(uuid())
+  code      String     @unique
+  gameType  String     @default("chess")
+  status    String     @default("WAITING")
+  maxPlayers Int       @default(2)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  players RoomPlayer[]
+  match   Match?
+
+  @@map("rooms")
+}
+
+model RoomPlayer {
+  id       String  @id @default(uuid())
+  roomId   String
+  userId   String
+  isReady  Boolean @default(false)
+  isHost   Boolean @default(false)
+  joinedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@map("room_players")
+}
+
+model Match {
+  id            String      @id @default(uuid())
+  roomId        String      @unique
+  gameType      String      @default("chess")
+  whitePlayerId String
+  blackPlayerId String
+  status        String      @default("IN_PROGRESS")
+  winnerId      String?
+  result        String?
+  boardState    String?
+  startedAt     DateTime    @default(now())
+  endedAt       DateTime?
+
+  room        Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  whitePlayer User   @relation("WhitePlayer", fields: [whitePlayerId], references: [id])
+  blackPlayer User   @relation("BlackPlayer", fields: [blackPlayerId], references: [id])
+  moves       Move[]
+
+  @@map("matches")
+}
+
+model Move {
+  id        String   @id @default(uuid())
+  matchId   String
+  playerId  String
+  moveNum   Int
+  from      String
+  to        String
+  piece     String
+  captured  String?
+  promotion String?
+  notation  String
+  fen       String?
+  createdAt DateTime @default(now())
+
+  match  Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player User  @relation(fields: [playerId], references: [id])
+
+  @@map("moves")
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  roomId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("chat_messages")
+}
+
+model DeveloperSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  plan      String   @default("monthly")
+  price     Float    @default(1.99)
+  status    String   @default("ACTIVE")
+  startDate DateTime @default(now())
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("developer_subscriptions")
+}
+
+model CustomGame {
+  id          String   @id @default(uuid())
+  ownerId     String
+  title       String
+  description String   @default("")
+  icon        String   @default("Gamepad2")
+  gameUrl     String
+  gameType    String   @default("iframe")
+  isPublished Boolean  @default(false)
+  plays       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("custom_games")
+}
+
+model GameSubmission {
+  id          String   @id @default(uuid())
+  developerId String
+  name        String
+  slug        String   @unique
+  description String   @default("")
+  version     String   @default("1.0.0")
+  manifest    String   @default("{}")
+  sourceFiles String   @default("{}")
+  gameUrl     String   @default("")
+  mode        String   @default("singleplayer")
+  minPlayers  Int      @default(1)
+  maxPlayers  Int      @default(1)
+  icon        String   @default("Gamepad2")
+  status      String   @default("PENDING")
+  scanResult  String   @default("{}")
+  rejectReason String?
+  plays       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  developer User        @relation(fields: [developerId], references: [id], onDelete: Cascade)
+  reviews   ReviewLog[]
+
+  @@map("game_submissions")
+}
+
+model ReviewLog {
+  id           String   @id @default(uuid())
+  submissionId String
+  reviewerId   String
+  action       String
+  comment      String   @default("")
+  createdAt    DateTime @default(now())
+
+  submission GameSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   User           @relation(fields: [reviewerId], references: [id])
+
+  @@map("review_logs")
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  userId         String
+  amount         Float
+  currency       String   @default("USD")
+  method         String   @default("card")
+  cardLast4      String?  
+  cardBrand      String?
+  status         String   @default("COMPLETED")
+  description    String   @default("")
+  subscriptionId String?
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+// Roles: PLAYER | DEVELOPER | ADMIN
+// RoomStatus: WAITING | PLAYING | FINISHED
+// MatchStatus: IN_PROGRESS | CHECKMATE | STALEMATE | DRAW | RESIGNED | TIMEOUT | ABANDONED
+// SubscriptionStatus: ACTIVE | EXPIRED | CANCELLED
+// GameStatus: PENDING | APPROVED | REJECTED | DISABLED
+// Mode: singleplayer | multiplayer | both
+// ReviewAction: APPROVED | REJECTED | DISABLED | RESUBMIT
