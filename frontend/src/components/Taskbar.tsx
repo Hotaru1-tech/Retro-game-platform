@@ -119,7 +119,7 @@ function StartMenu({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <div className="text-white font-bold text-[12px]">RetroPlay</div>
-            <div className="text-blue-200 text-[10px]">{user?.username || 'Guest'}</div>
+            <div className="text-blue-200 text-[10px]">{user?.username || 'Player'}</div>
           </div>
         </div>
 
@@ -141,7 +141,7 @@ function StartMenu({ onClose }: { onClose: () => void }) {
           {isAuthenticated ? (
             <button
               className="w-full flex items-center gap-3 px-4 py-1.5 text-[11px] hover:bg-retro-highlight hover:text-white text-left"
-              onClick={() => { logout(); onClose(); }}
+              onClick={() => { void logout(); onClose(); }}
             >
               <LogOut size={16} />
               Log Out

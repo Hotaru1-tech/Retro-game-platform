@@ -19,7 +19,7 @@ const corsOrigins = [config.corsOrigin, /^http:\/\/localhost:\d+$/];
 const io = new Server(server, {
   cors: {
     origin: corsOrigins,
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
   },
 });

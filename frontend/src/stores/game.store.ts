@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { getSocket } from '@/lib/socket';
+import { useAuthStore } from './auth.store';
 
 interface GameState {
   roomId: string | null;
@@ -23,23 +24,23 @@ interface GameState {
   error: string | null;
 
   // Room actions
-  joinRoom: (roomId: string) => void;
-  leaveRoom: () => void;
-  setReady: (isReady: boolean) => void;
-  startGame: () => void;
+  joinRoom: (roomId: string) => Promise<void>;
+  leaveRoom: () => Promise<void>;
+  setReady: (isReady: boolean) => Promise<void>;
+  startGame: () => Promise<void>;
 
   // Game actions
   selectSquare: (row: number, col: number) => void;
-  makeMove: (from: { row: number; col: number }, to: { row: number; col: number }, promotion?: string) => void;
-  resign: () => void;
+  makeMove: (from: { row: number; col: number }, to: { row: number; col: number }, promotion?: string) => Promise<void>;
+  resign: () => Promise<void>;
   clearSelection: () => void;
 
   // Matchmaking
-  joinQueue: () => void;
-  leaveQueue: () => void;
+  joinQueue: () => Promise<void>;
+  leaveQueue: () => Promise<void>;
 
   // Chat
-  sendMessage: (content: string) => void;
+  sendMessage: (content: string) => Promise<void>;
 
   // Socket listeners
   setupListeners: () => void;
@@ -71,13 +72,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   messages: [],
   error: null,
 
-  joinRoom: (roomId: string) => {
+  joinRoom: async (roomId: string) => {
     const socket = getSocket();
     socket.emit('join_room', { roomId });
     set({ roomId });
   },
 
-  leaveRoom: () => {
+  leaveRoom: async () => {
     const socket = getSocket();
     const { roomId } = get();
     if (roomId) socket.emit('leave_room', { roomId });
@@ -88,13 +89,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  setReady: (isReady: boolean) => {
+  setReady: async (isReady: boolean) => {
     const socket = getSocket();
     const { roomId } = get();
     if (roomId) socket.emit('ready', { roomId, isReady });
   },
 
-  startGame: () => {
+  startGame: async () => {
     const socket = getSocket();
     const { roomId } = get();
     if (roomId) socket.emit('start_game', { roomId });
@@ -108,7 +109,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // If clicking on a valid move, make the move
     if (selectedSquare && validMoves.some(m => m.row === row && m.col === col)) {
-      get().makeMove(selectedSquare, { row, col });
+      void get().makeMove(selectedSquare, { row, col });
       return;
     }
 
@@ -122,7 +123,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  makeMove: (from, to, promotion) => {
+  makeMove: async (from, to, promotion) => {
     const socket = getSocket();
     const { matchId, board } = get();
     if (!matchId) return;
@@ -138,7 +139,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ selectedSquare: null, validMoves: [] });
   },
 
-  resign: () => {
+  resign: async () => {
     const socket = getSocket();
     const { matchId } = get();
     if (matchId) socket.emit('resign', { matchId });
@@ -148,19 +149,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     set({ selectedSquare: null, validMoves: [] });
   },
 
-  joinQueue: () => {
+  joinQueue: async () => {
     const socket = getSocket();
     socket.emit('join_queue', { gameType: 'chess' });
     set({ isInQueue: true });
   },
 
-  leaveQueue: () => {
+  leaveQueue: async () => {
     const socket = getSocket();
     socket.emit('leave_queue');
     set({ isInQueue: false });
   },
 
-  sendMessage: (content: string) => {
+  sendMessage: async (content: string) => {
     const socket = getSocket();
     const { roomId } = get();
     if (roomId) socket.emit('chat_message', { roomId, content });
@@ -178,7 +179,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
 
     socket.on('game_started', (data: any) => {
-      const userId = JSON.parse(atob(localStorage.getItem('token')?.split('.')[1] || '{}')).userId;
+      const userId = useAuthStore.getState().user?.id;
       const playerColor = data.whitePlayerId === userId ? 'white' : 'black';
 
       set({

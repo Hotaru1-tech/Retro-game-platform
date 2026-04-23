@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { config } from '../config';
+import { prisma } from '../lib/prisma';
+import { verifyClerkToken } from '../lib/clerk';
 
 export type UserRole = 'PLAYER' | 'DEVELOPER' | 'ADMIN';
 
 export interface AuthPayload {
-  userId: string;
-  username: string;
+  userId?: string;
+  clerkId: string;
   role?: UserRole;
 }
 
@@ -14,19 +14,71 @@ export interface AuthRequest extends Request {
   user?: AuthPayload;
 }
 
-export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
+async function verifyRequestToken(req: AuthRequest): Promise<{ clerkId: string } | null> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'No token provided' });
-    return;
+    return null;
   }
 
   const token = authHeader.split(' ')[1];
+  const verifiedToken = await verifyClerkToken(token);
+  const clerkId = verifiedToken.sub;
+  if (!clerkId) {
+    return null;
+  }
 
+  return { clerkId };
+}
+
+async function resolveAuth(req: AuthRequest): Promise<AuthPayload | null> {
+  const verified = await verifyRequestToken(req);
+  if (!verified) {
+    return null;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { clerkId: verified.clerkId },
+    select: { id: true, role: true },
+  });
+
+  if (!user) {
+    return null;
+  }
+
+  return {
+    userId: user.id,
+    clerkId: verified.clerkId,
+    role: user.role as UserRole,
+  };
+}
+
+export async function clerkAuthMiddleware(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const decoded = jwt.verify(token, config.jwtSecret) as AuthPayload;
-    req.user = decoded;
+    const verified = await verifyRequestToken(req);
+    if (!verified) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    req.user = {
+      clerkId: verified.clerkId,
+    };
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const auth = await resolveAuth(req);
+    if (!auth) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    req.user = auth;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });
@@ -34,25 +86,13 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
 }
 
 export function requireRole(...roles: UserRole[]) {
-  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
 
-    // Fetch role from DB if not in token
-    if (!req.user.role) {
-      try {
-        const { prisma } = await import('../lib/prisma');
-        const user = await prisma.user.findUnique({ where: { id: req.user.userId }, select: { role: true } });
-        if (user) req.user.role = user.role as UserRole;
-      } catch {
-        res.status(500).json({ error: 'Failed to verify role' });
-        return;
-      }
-    }
-
-    if (!req.user.role || !roles.includes(req.user.role)) {
+    if (!roles.includes(req.user.role as UserRole)) {
       res.status(403).json({ error: `Access denied. Required role: ${roles.join(' or ')}` });
       return;
     }
@@ -63,17 +103,11 @@ export function requireRole(...roles: UserRole[]) {
 export const requireDeveloper = requireRole('DEVELOPER', 'ADMIN');
 export const requireAdmin = requireRole('ADMIN');
 
-export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    try {
-      const decoded = jwt.verify(token, config.jwtSecret) as AuthPayload;
-      req.user = decoded;
-    } catch {
-      // Token invalid, continue without auth
-    }
+export async function optionalAuth(req: AuthRequest, _res: Response, next: NextFunction): Promise<void> {
+  try {
+    req.user = await resolveAuth(req) || undefined;
+  } catch {
+    req.user = undefined;
   }
   next();
 }

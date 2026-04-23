@@ -46,11 +46,11 @@ const paymentSchema = z.object({
 router.post('/process', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const data = paymentSchema.parse(req.body);
-    const userId = req.user!.userId;
+    const userId = req.user!.userId!;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.isGuest) {
-      res.status(400).json({ error: 'Guest accounts cannot make payments. Please register.' });
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
       return;
     }
 
@@ -168,7 +168,7 @@ router.post('/process', authMiddleware, async (req: AuthRequest, res: Response) 
 router.get('/history', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const payments = await prisma.payment.findMany({
-      where: { userId: req.user!.userId },
+      where: { userId: req.user!.userId! },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
