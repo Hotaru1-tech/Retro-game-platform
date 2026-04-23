@@ -1,17 +1,22 @@
 import { Server, Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
-import { config } from '../config';
 import { roomService } from '../services/room.service';
 import { gameService } from '../services/game.service';
 import { matchmakingService } from '../services/matchmaking.service';
 import { prisma } from '../lib/prisma';
 import { AuthPayload } from '../middleware/auth';
+import { verifyClerkToken } from '../lib/clerk';
 
 interface SocketUser {
   userId: string;
   username: string;
   socketId: string;
   roomId?: string;
+}
+
+interface ConnectedAuthUser {
+  userId: string;
+  clerkId: string;
+  role: NonNullable<AuthPayload['role']>;
 }
 
 const connectedUsers = new Map<string, SocketUser>();
@@ -26,31 +31,52 @@ export function setupSocketHandlers(io: Server): void {
       return next(new Error('Authentication required'));
     }
 
-    try {
-      const decoded = jwt.verify(token, config.jwtSecret) as AuthPayload;
-      (socket as any).user = decoded;
-      next();
-    } catch {
-      next(new Error('Invalid token'));
-    }
+    verifyClerkToken(token)
+      .then(async (verifiedToken) => {
+        const clerkId = verifiedToken.sub;
+        if (!clerkId) {
+          next(new Error('Invalid token'));
+          return;
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { clerkId },
+          select: { id: true, username: true, role: true },
+        });
+
+        if (!user) {
+          next(new Error('User not synced'));
+          return;
+        }
+
+        (socket as any).user = {
+          userId: user.id,
+          clerkId,
+          role: user.role as AuthPayload['role'],
+        } as ConnectedAuthUser;
+        (socket as any).username = user.username;
+        next();
+      })
+      .catch(() => next(new Error('Invalid token')));
   });
 
   io.on('connection', (socket: Socket) => {
-    const user = (socket as any).user as AuthPayload;
-    console.log(`[Socket] ${user.username} connected (${socket.id})`);
+    const user = (socket as any).user as ConnectedAuthUser;
+    const username = (socket as any).username as string;
+    console.log(`[Socket] ${username} connected (${socket.id})`);
 
     // Handle reconnection
     const existingTimer = disconnectTimers.get(user.userId);
     if (existingTimer) {
       clearTimeout(existingTimer);
       disconnectTimers.delete(user.userId);
-      console.log(`[Socket] ${user.username} reconnected`);
+      console.log(`[Socket] ${username} reconnected`);
     }
 
     // Register user
     connectedUsers.set(socket.id, {
       userId: user.userId,
-      username: user.username,
+      username,
       socketId: socket.id,
     });
     userSockets.set(user.userId, socket.id);
@@ -215,7 +241,7 @@ export function setupSocketHandlers(io: Server): void {
         const rating = await prisma.rating.findUnique({ where: { userId: user.userId } });
         const elo = rating?.elo || 1200;
 
-        const result = await matchmakingService.joinQueue(user.userId, user.username, elo);
+          const result = await matchmakingService.joinQueue(user.userId, username, elo);
 
         if (result.matched && result.roomId) {
           // Notify both players
@@ -258,7 +284,7 @@ export function setupSocketHandlers(io: Server): void {
         io.to(data.roomId).emit('chat_message', {
           id: message.id,
           userId: user.userId,
-          username: user.username,
+          username,
           content: data.content,
           createdAt: message.createdAt,
         });
@@ -269,7 +295,7 @@ export function setupSocketHandlers(io: Server): void {
 
     // --- DISCONNECT ---
     socket.on('disconnect', () => {
-      console.log(`[Socket] ${user.username} disconnected (${socket.id})`);
+      console.log(`[Socket] ${username} disconnected (${socket.id})`);
 
       const socketUser = connectedUsers.get(socket.id);
       const roomId = socketUser?.roomId;
@@ -286,7 +312,7 @@ export function setupSocketHandlers(io: Server): void {
               io.to(roomId).emit('room_updated', room);
               io.to(roomId).emit('player_disconnected', {
                 userId: user.userId,
-                username: user.username,
+                username,
                 permanent: true,
               });
             }
@@ -302,7 +328,7 @@ export function setupSocketHandlers(io: Server): void {
       if (roomId) {
         io.to(roomId).emit('player_disconnected', {
           userId: user.userId,
-          username: user.username,
+          username,
           permanent: false,
         });
       }
@@ -323,7 +349,7 @@ export function setupSocketHandlers(io: Server): void {
         socket.emit('reconnected', { room, gameState: state });
         io.to(data.roomId).emit('player_reconnected', {
           userId: user.userId,
-          username: user.username,
+          username,
         });
       } catch (err: any) {
         socket.emit('error', { message: err.message });

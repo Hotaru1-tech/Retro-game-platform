@@ -1,114 +1,84 @@
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
-import { config } from '../config';
+import { clerkClient } from '../lib/clerk';
 
-export interface RegisterInput {
-  username: string;
-  email: string;
-  password: string;
-}
-
-export interface LoginInput {
-  email: string;
-  password: string;
+export interface ClerkIdentity {
+  clerkUserId: string;
 }
 
 export class AuthService {
-  async register(input: RegisterInput) {
-    const existing = await prisma.user.findFirst({
-      where: { OR: [{ email: input.email }, { username: input.username }] },
-    });
+  async syncClerkUser(identity: ClerkIdentity) {
+    const clerkUser = await clerkClient.users.getUser(identity.clerkUserId);
+    const primaryEmail =
+      clerkUser.primaryEmailAddressId
+        ? clerkUser.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)?.emailAddress
+        : clerkUser.emailAddresses[0]?.emailAddress;
 
-    if (existing) {
-      throw new Error('User with this email or username already exists');
+    if (!primaryEmail) {
+      throw new Error('Clerk user does not have a primary email address');
     }
 
-    const hashedPassword = await bcrypt.hash(input.password, 12);
+    const desiredUsername = this.buildUsername(
+      clerkUser.username ||
+        clerkUser.firstName ||
+        primaryEmail.split('@')[0] ||
+        'player',
+      clerkUser.id,
+    );
 
-    const user = await prisma.user.create({
+    const existingByClerkId = await prisma.user.findUnique({
+      where: { clerkId: identity.clerkUserId },
+      include: { profile: true, rating: true },
+    });
+
+    if (existingByClerkId) {
+      const nextUsername =
+        existingByClerkId.username === desiredUsername
+          ? existingByClerkId.username
+          : await this.ensureUniqueUsername(desiredUsername, existingByClerkId.id);
+
+      return prisma.user.update({
+        where: { id: existingByClerkId.id },
+        data: {
+          email: primaryEmail,
+          username: nextUsername,
+          password: null,
+        },
+        include: { profile: true, rating: true },
+      });
+    }
+
+    const existingByEmail = await prisma.user.findUnique({
+      where: { email: primaryEmail },
+      include: { profile: true, rating: true },
+    });
+
+    if (existingByEmail) {
+      const nextUsername = await this.ensureUniqueUsername(desiredUsername, existingByEmail.id);
+      return prisma.user.update({
+        where: { id: existingByEmail.id },
+        data: {
+          clerkId: identity.clerkUserId,
+          email: primaryEmail,
+          username: nextUsername,
+          password: null,
+        },
+        include: { profile: true, rating: true },
+      });
+    }
+
+    const username = await this.ensureUniqueUsername(desiredUsername);
+
+    return prisma.user.create({
       data: {
-        username: input.username,
-        email: input.email,
-        password: hashedPassword,
+        clerkId: identity.clerkUserId,
+        username,
+        email: primaryEmail,
+        password: null,
         profile: { create: {} },
         rating: { create: { elo: 1200 } },
       },
       include: { profile: true, rating: true },
     });
-
-    const token = this.generateToken(user.id, user.username);
-
-    return {
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        profile: user.profile,
-        rating: user.rating,
-      },
-      token,
-    };
-  }
-
-  async login(input: LoginInput) {
-    const user = await prisma.user.findUnique({
-      where: { email: input.email },
-      include: { profile: true, rating: true },
-    });
-
-    if (!user) {
-      throw new Error('Invalid email or password');
-    }
-
-    const isValid = await bcrypt.compare(input.password, user.password);
-    if (!isValid) {
-      throw new Error('Invalid email or password');
-    }
-
-    const token = this.generateToken(user.id, user.username);
-
-    return {
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        profile: user.profile,
-        rating: user.rating,
-      },
-      token,
-    };
-  }
-
-  async createGuest() {
-    const guestName = `Guest_${Math.random().toString(36).substring(2, 8)}`;
-    const guestEmail = `${guestName.toLowerCase()}@guest.local`;
-
-    const user = await prisma.user.create({
-      data: {
-        username: guestName,
-        email: guestEmail,
-        password: '',
-        isGuest: true,
-        profile: { create: {} },
-        rating: { create: { elo: 1200 } },
-      },
-      include: { profile: true, rating: true },
-    });
-
-    const token = this.generateToken(user.id, user.username);
-
-    return {
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        isGuest: true,
-        profile: user.profile,
-        rating: user.rating,
-      },
-      token,
-    };
   }
 
   async getProfile(userId: string) {
@@ -128,6 +98,7 @@ export class AuthService {
       id: user.id,
       username: user.username,
       email: user.email,
+      clerkId: user.clerkId,
       profile: user.profile,
       rating: user.rating,
       recentMatches: [...user.matchesW, ...user.matchesB]
@@ -136,10 +107,23 @@ export class AuthService {
     };
   }
 
-  private generateToken(userId: string, username: string, role: string = 'PLAYER'): string {
-    return jwt.sign({ userId, username, role }, config.jwtSecret, {
-      expiresIn: config.jwtExpiresIn as any,
-    });
+  private buildUsername(rawValue: string, clerkUserId: string) {
+    const cleaned = rawValue.toLowerCase().replace(/[^a-z0-9_]+/g, '-').replace(/^-+|-+$/g, '');
+    return cleaned || `player-${clerkUserId.slice(-6).toLowerCase()}`;
+  }
+
+  private async ensureUniqueUsername(username: string, currentUserId?: string) {
+    let candidate = username;
+    let attempt = 1;
+
+    while (true) {
+      const existing = await prisma.user.findUnique({ where: { username: candidate } });
+      if (!existing || existing.id === currentUserId) {
+        return candidate;
+      }
+      candidate = `${username}-${attempt}`;
+      attempt += 1;
+    }
   }
 }
 

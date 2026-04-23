@@ -8,8 +8,9 @@ const router = Router();
 // Get developer status
 router.get('/status', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const profile = await prisma.profile.findUnique({ where: { userId: req.user!.userId } });
-    const subscription = await prisma.developerSubscription.findUnique({ where: { userId: req.user!.userId } });
+    const userId = req.user!.userId!;
+    const profile = await prisma.profile.findUnique({ where: { userId } });
+    const subscription = await prisma.developerSubscription.findUnique({ where: { userId } });
 
     // Check if subscription expired
     if (subscription && subscription.status === 'ACTIVE' && new Date(subscription.endDate) < new Date()) {
@@ -18,7 +19,7 @@ router.get('/status', authMiddleware, async (req: AuthRequest, res: Response) =>
         data: { status: 'EXPIRED' },
       });
       await prisma.profile.update({
-        where: { userId: req.user!.userId },
+        where: { userId },
         data: { isDeveloper: false },
       });
       res.json({ isDeveloper: false, subscription: { ...subscription, status: 'EXPIRED' } });
@@ -42,13 +43,7 @@ const subscribeSchema = z.object({
 router.post('/subscribe', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const { plan } = subscribeSchema.parse(req.body);
-    const userId = req.user!.userId;
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.isGuest) {
-      res.status(400).json({ error: 'Guest accounts cannot subscribe. Please register a full account.' });
-      return;
-    }
+    const userId = req.user!.userId!;
 
     const price = plan === 'monthly' ? 1.99 : 9.99;
     const durationMs = plan === 'monthly' ? 30 * 24 * 60 * 60 * 1000 : 365 * 24 * 60 * 60 * 1000;
@@ -84,7 +79,7 @@ router.post('/subscribe', authMiddleware, async (req: AuthRequest, res: Response
 // Cancel subscription
 router.post('/cancel', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    const userId = req.user!.userId!;
     const subscription = await prisma.developerSubscription.findUnique({ where: { userId } });
     if (!subscription) {
       res.status(404).json({ error: 'No active subscription' });
@@ -126,7 +121,7 @@ const createGameSchema = z.object({
 
 router.post('/games', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    const userId = req.user!.userId!;
     const profile = await prisma.profile.findUnique({ where: { userId } });
     if (!profile?.isDeveloper) {
       res.status(403).json({ error: 'Developer mode required' });
@@ -169,7 +164,7 @@ const updateGameSchema = z.object({
 
 router.put('/games/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    const userId = req.user!.userId!;
     const game = await prisma.customGame.findUnique({ where: { id: req.params.id } });
 
     if (!game) {
@@ -200,7 +195,7 @@ router.put('/games/:id', authMiddleware, async (req: AuthRequest, res: Response)
 // Delete game (owner only)
 router.delete('/games/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    const userId = req.user!.userId!;
     const game = await prisma.customGame.findUnique({ where: { id: req.params.id } });
 
     if (!game) {
@@ -223,7 +218,7 @@ router.delete('/games/:id', authMiddleware, async (req: AuthRequest, res: Respon
 router.get('/games/mine', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const games = await prisma.customGame.findMany({
-      where: { ownerId: req.user!.userId },
+      where: { ownerId: req.user!.userId! },
       orderBy: { createdAt: 'desc' },
     });
     res.json(games);

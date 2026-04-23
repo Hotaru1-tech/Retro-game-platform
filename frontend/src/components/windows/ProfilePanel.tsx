@@ -85,7 +85,6 @@ export default function ProfilePanel() {
             {isDev && <span className="text-[8px] bg-purple-600 text-white px-1.5 py-0.5 rounded-sm font-bold">DEV</span>}
           </div>
           <p className="text-[10px] text-gray-500">{user.email}</p>
-          {user.isGuest && <span className="text-[9px] bg-yellow-100 px-1">Guest</span>}
         </div>
       </div>
 
@@ -116,9 +115,7 @@ export default function ProfilePanel() {
           <h3 className="font-bold text-[11px]">Developer Mode</h3>
         </div>
 
-        {user.isGuest ? (
-          <p className="text-[10px] text-gray-500">Register a full account to access Developer Mode.</p>
-        ) : isDev ? (
+        {isDev ? (
           <>
             <div className="retro-panel p-2 mb-2 bg-purple-50">
               <div className="flex items-center gap-1 text-[11px] text-purple-800 font-bold mb-1">
@@ -216,7 +213,7 @@ export default function ProfilePanel() {
       </div>
 
       {/* Payment History */}
-      {isAuthenticated && !user.isGuest && (
+      {isAuthenticated && (
         <div className="retro-panel-inset p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-1">

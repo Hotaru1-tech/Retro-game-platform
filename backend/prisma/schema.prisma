@@ -3,16 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
 }
 
 model User {
   id        String   @id @default(uuid())
+  clerkId   String   @unique
   username  String   @unique
   email     String   @unique
-  password  String
-  isGuest   Boolean  @default(false)
+  password  String?
   role      String   @default("PLAYER")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

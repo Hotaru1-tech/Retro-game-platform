@@ -26,7 +26,7 @@ const submitSchema = z.object({
 router.post('/submit', authMiddleware, requireDeveloper, async (req: AuthRequest, res: Response) => {
   try {
     const data = submitSchema.parse(req.body);
-    const userId = req.user!.userId;
+    const userId = req.user!.userId!;
 
     // Check slug uniqueness
     const existing = await prisma.gameSubmission.findUnique({ where: { slug: data.slug } });
@@ -80,7 +80,7 @@ router.post('/submit', authMiddleware, requireDeveloper, async (req: AuthRequest
 router.get('/my-games', authMiddleware, requireDeveloper, async (req: AuthRequest, res: Response) => {
   try {
     const games = await prisma.gameSubmission.findMany({
-      where: { developerId: req.user!.userId },
+      where: { developerId: req.user!.userId! },
       orderBy: { createdAt: 'desc' },
       include: { reviews: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
@@ -108,7 +108,7 @@ router.put('/my-games/:id', authMiddleware, requireDeveloper, async (req: AuthRe
   try {
     const game = await prisma.gameSubmission.findUnique({ where: { id: req.params.id } });
     if (!game) { res.status(404).json({ error: 'Game not found' }); return; }
-    if (game.developerId !== req.user!.userId) { res.status(403).json({ error: 'Not your game' }); return; }
+    if (game.developerId !== req.user!.userId!) { res.status(403).json({ error: 'Not your game' }); return; }
     if (game.status !== 'PENDING' && game.status !== 'REJECTED') {
       res.status(400).json({ error: 'Can only edit pending or rejected submissions' });
       return;
@@ -150,7 +150,7 @@ router.delete('/my-games/:id', authMiddleware, requireDeveloper, async (req: Aut
   try {
     const game = await prisma.gameSubmission.findUnique({ where: { id: req.params.id } });
     if (!game) { res.status(404).json({ error: 'Game not found' }); return; }
-    if (game.developerId !== req.user!.userId) { res.status(403).json({ error: 'Not your game' }); return; }
+    if (game.developerId !== req.user!.userId!) { res.status(403).json({ error: 'Not your game' }); return; }
 
     await prisma.gameSubmission.delete({ where: { id: req.params.id } });
     res.json({ message: 'Game deleted' });
@@ -213,7 +213,7 @@ router.post('/admin/review/:id', authMiddleware, requireAdmin, async (req: AuthR
     await prisma.reviewLog.create({
       data: {
         submissionId: req.params.id,
-        reviewerId: req.user!.userId,
+        reviewerId: req.user!.userId!,
         action,
         comment: comment || '',
       },

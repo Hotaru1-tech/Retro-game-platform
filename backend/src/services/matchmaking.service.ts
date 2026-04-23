@@ -1,6 +1,5 @@
 import { redisClient } from '../lib/redis';
 import { roomService } from './room.service';
-import { PieceColor } from '../games/chess/types';
 
 const QUEUE_KEY = 'matchmaking:chess:queue';
 const QUEUE_TIMEOUT = 120; // seconds

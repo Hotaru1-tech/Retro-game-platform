@@ -1,14 +1,13 @@
 import { io, Socket } from 'socket.io-client';
 import { WS_URL } from './utils';
+import { getAuthToken } from './auth-runtime';
 
 let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-
     socket = io(WS_URL, {
-      auth: { token },
+      auth: { token: null },
       autoConnect: false,
       reconnection: true,
       reconnectionAttempts: 10,
@@ -19,10 +18,10 @@ export function getSocket(): Socket {
   return socket;
 }
 
-export function connectSocket(): void {
+export async function connectSocket(): Promise<void> {
   const s = getSocket();
   if (!s.connected) {
-    const token = localStorage.getItem('token');
+    const token = await getAuthToken();
     s.auth = { token };
     s.connect();
   }
@@ -35,9 +34,9 @@ export function disconnectSocket(): void {
   }
 }
 
-export function updateSocketAuth(): void {
+export async function updateSocketAuth(): Promise<void> {
   if (socket) {
-    const token = localStorage.getItem('token');
+    const token = await getAuthToken();
     socket.auth = { token };
     if (socket.connected) {
       socket.disconnect();

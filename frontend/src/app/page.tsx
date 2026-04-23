@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
-import { useWindowStore } from '@/stores/window.store';
+import { useWindowStore, type WindowState } from '@/stores/window.store';
 import Window from '@/components/Window';
 import Taskbar from '@/components/Taskbar';
 import DesktopIcons from '@/components/DesktopIcons';
@@ -25,47 +25,39 @@ import DevPanel from '@/components/windows/DevPanel';
 import DevSubmit from '@/components/windows/DevSubmit';
 import AdminReview from '@/components/windows/AdminReview';
 
-function WindowContent({ type, props }: { type: string; props?: Record<string, any> }) {
-  switch (type) {
-    case 'games-app':
-      return <GamesApp />;
-    case 'game-library':
-      return <GameLibrary />;
-    case 'matchmaking':
-      return <MatchmakingPanel />;
-    case 'lobby':
-      return <LobbyPanel roomId={props?.roomId} />;
-    case 'chess':
-      return <ChessGame />;
-    case 'local-chess':
-      return <LocalChessGame />;
-    case 'tictactoe':
-      return <TicTacToe />;
-    case 'snake':
-      return <SnakeGame />;
-    case 'minesweeper':
-      return <Minesweeper />;
-    case 'memory':
-      return <MemoryGame />;
-    case 'settings':
-      return <LoginPanel />;
-    case 'profile':
-      return <ProfilePanel />;
-    case 'leaderboard':
-      return <LeaderboardPanel />;
-    case 'dev-panel':
-      return <DevPanel />;
-    case 'dev-submit':
-      return <DevSubmit />;
-    case 'admin-review':
-      return <AdminReview />;
-    default:
-      return <div className="p-4 text-[11px]">Unknown window type</div>;
+type WindowProps = Record<string, unknown>;
+type WindowRenderer = (props?: WindowProps) => JSX.Element;
+
+const windowRenderers: Partial<Record<WindowState['type'], WindowRenderer>> = {
+  'games-app': () => <GamesApp />,
+  'game-library': () => <GameLibrary />,
+  'matchmaking': () => <MatchmakingPanel />,
+  'lobby': (props) => <LobbyPanel roomId={String(props?.roomId ?? '')} />,
+  'chess': () => <ChessGame />,
+  'local-chess': () => <LocalChessGame />,
+  'tictactoe': () => <TicTacToe />,
+  'snake': () => <SnakeGame />,
+  'minesweeper': () => <Minesweeper />,
+  'memory': () => <MemoryGame />,
+  'settings': () => <LoginPanel />,
+  'profile': () => <ProfilePanel />,
+  'leaderboard': () => <LeaderboardPanel />,
+  'dev-panel': () => <DevPanel />,
+  'dev-submit': () => <DevSubmit />,
+  'admin-review': () => <AdminReview />,
+};
+
+function WindowContent({ type, props }: { type: WindowState['type']; props?: WindowProps }) {
+  const renderWindow = windowRenderers[type];
+  if (!renderWindow) {
+    return <div className="p-4 text-[11px]">Unknown window type</div>;
   }
+
+  return renderWindow(props);
 }
 
 export default function Desktop() {
-  const { loadFromStorage, isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isClerkLoaded } = useAuthStore();
   const { windows, openWindow, closeWindow } = useWindowStore();
   const [booted, setBooted] = useState(false);
 
@@ -73,13 +65,9 @@ export default function Desktop() {
     setBooted(true);
   }, []);
 
-  useEffect(() => {
-    if (booted) loadFromStorage();
-  }, [booted]);
-
   // Auto-open login if not authenticated, auto-close on login
   useEffect(() => {
-    if (!booted) return;
+    if (!booted || !isClerkLoaded) return;
     if (!isAuthenticated) {
       const hasLoginWindow = windows.some(w => w.type === 'settings');
       if (!hasLoginWindow) {
@@ -91,7 +79,7 @@ export default function Desktop() {
         closeWindow(loginWindow.id);
       }
     }
-  }, [isAuthenticated, booted]);
+  }, [booted, closeWindow, isAuthenticated, isClerkLoaded, openWindow, windows]);
 
   if (!booted) {
     return <BootScreen onComplete={handleBootComplete} />;

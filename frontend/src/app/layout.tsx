@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import { ClerkProvider } from '@clerk/nextjs';
+import AuthSync from '@/components/AuthSync';
+import { clerkEnabled } from '@/lib/clerk-config';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -7,11 +10,16 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const content = (
+    <body className="crt-effect">
+      <AuthSync />
+      {children}
+    </body>
+  );
+
   return (
     <html lang="en">
-      <body className="crt-effect">
-        {children}
-      </body>
+      {clerkEnabled ? <ClerkProvider>{content}</ClerkProvider> : content}
     </html>
   );
 }
