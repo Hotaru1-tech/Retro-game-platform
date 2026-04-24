@@ -42,30 +42,9 @@ const subscribeSchema = z.object({
 
 router.post('/subscribe', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const { plan } = subscribeSchema.parse(req.body);
-    const userId = req.user!.userId!;
-
-    const price = plan === 'monthly' ? 1.99 : 9.99;
-    const durationMs = plan === 'monthly' ? 30 * 24 * 60 * 60 * 1000 : 365 * 24 * 60 * 60 * 1000;
-    const endDate = new Date(Date.now() + durationMs);
-
-    // Upsert subscription
-    const subscription = await prisma.developerSubscription.upsert({
-      where: { userId },
-      create: { userId, plan, price, status: 'ACTIVE', endDate },
-      update: { plan, price, status: 'ACTIVE', startDate: new Date(), endDate },
-    });
-
-    // Enable developer mode on profile
-    await prisma.profile.update({
-      where: { userId },
-      data: { isDeveloper: true },
-    });
-
-    res.json({
-      message: `Developer mode activated! Plan: ${plan} ($${price})`,
-      subscription,
-      isDeveloper: true,
+    subscribeSchema.parse(req.body);
+    res.status(410).json({
+      error: 'Developer subscriptions now use the payments flow. Use /api/payments/init followed by /api/payments/confirm.',
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
