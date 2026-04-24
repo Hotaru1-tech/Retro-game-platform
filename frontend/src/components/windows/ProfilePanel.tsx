@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useWindowStore } from '@/stores/window.store';
 import { useToastStore } from '@/components/Toast';
-import { apiFetch, cn } from '@/lib/utils';
-import { Trophy, Swords, Minus, Code, CreditCard, Check, Receipt } from 'lucide-react';
+import { apiFetch } from '@/lib/utils';
+import { Code, CreditCard, Check, Receipt } from 'lucide-react';
 import PaymentModal from '@/components/PaymentModal';
 
 export default function ProfilePanel() {
@@ -26,14 +26,18 @@ export default function ProfilePanel() {
     try {
       const data = await apiFetch('/api/developer/status');
       setDevStatus(data);
-    } catch { /* ignore */ }
+    } catch {
+      // ignore
+    }
   };
 
   const loadPaymentHistory = async () => {
     try {
       const data = await apiFetch('/api/payments/history');
       setPayments(data);
-    } catch { /* ignore */ }
+    } catch {
+      // ignore
+    }
   };
 
   const handlePaymentSuccess = (data: any) => {
@@ -74,7 +78,6 @@ export default function ProfilePanel() {
 
   return (
     <div className="p-3 bg-retro-window h-full overflow-y-auto">
-      {/* User info */}
       <div className="retro-panel p-3 mb-3 flex items-center gap-3">
         <div className="w-14 h-14 bg-retro-title flex items-center justify-center text-white text-[20px] font-pixel">
           {user.username?.[0]?.toUpperCase() || '?'}
@@ -88,7 +91,6 @@ export default function ProfilePanel() {
         </div>
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-4 gap-1.5 mb-3 text-[11px]">
         <div className="retro-panel p-1.5 text-center">
           <div className="font-bold text-[14px] text-retro-title">{rating.elo}</div>
@@ -108,7 +110,6 @@ export default function ProfilePanel() {
         </div>
       </div>
 
-      {/* Developer Mode Section */}
       <div className="retro-panel-inset p-3 mb-3">
         <div className="flex items-center gap-2 mb-2">
           <Code size={14} className="text-purple-700" />
@@ -123,7 +124,7 @@ export default function ProfilePanel() {
               </div>
               <div className="text-[10px] text-gray-600">
                 Plan: <span className="font-bold">{sub?.plan === 'yearly' ? 'Yearly' : 'Monthly'}</span>
-                {' · '}
+                {' - '}
                 ${sub?.price}/{sub?.plan === 'yearly' ? 'yr' : 'mo'}
               </div>
               {sub?.endDate && (
@@ -168,7 +169,6 @@ export default function ProfilePanel() {
               </button>
             ) : (
               <div className="space-y-2">
-                {/* Monthly plan */}
                 <button
                   className="retro-panel p-2.5 w-full text-left hover:bg-blue-50 cursor-pointer flex items-center justify-between"
                   onClick={() => setPaymentPlan('monthly')}
@@ -183,7 +183,6 @@ export default function ProfilePanel() {
                   </div>
                 </button>
 
-                {/* Yearly plan */}
                 <button
                   className="retro-panel p-2.5 w-full text-left hover:bg-green-50 cursor-pointer flex items-center justify-between border-2 border-green-500"
                   onClick={() => setPaymentPlan('yearly')}
@@ -212,7 +211,6 @@ export default function ProfilePanel() {
         )}
       </div>
 
-      {/* Payment History */}
       {isAuthenticated && (
         <div className="retro-panel-inset p-3">
           <div className="flex items-center justify-between mb-2">
@@ -222,7 +220,10 @@ export default function ProfilePanel() {
             </div>
             <button
               className="retro-button !min-w-0 !px-2 text-[9px]"
-              onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadPaymentHistory(); }}
+              onClick={() => {
+                setShowHistory(!showHistory);
+                if (!showHistory) loadPaymentHistory();
+              }}
             >
               {showHistory ? 'Hide' : 'Show'}
             </button>
@@ -237,7 +238,11 @@ export default function ProfilePanel() {
                     <div>
                       <span className="font-bold">${p.amount.toFixed(2)}</span>
                       <span className="text-gray-500 ml-1">
-                        {p.method === 'card' ? `${p.cardBrand} ****${p.cardLast4}` : 'PayPal'}
+                        {p.method === 'mock'
+                          ? 'Mock Checkout'
+                          : p.method === 'card'
+                            ? `${p.cardBrand} ****${p.cardLast4}`
+                            : p.method}
                       </span>
                     </div>
                     <div className="text-[9px] text-gray-500">
@@ -251,7 +256,6 @@ export default function ProfilePanel() {
         </div>
       )}
 
-      {/* Payment Modal */}
       {paymentPlan && (
         <PaymentModal
           plan={paymentPlan}
